@@ -1,4 +1,4 @@
-import { App, Editor, FuzzySuggestModal, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal } from 'obsidian';
+import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal, WorkspaceLeaf, setIcon } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -106,8 +106,39 @@ export default class MyPlugin extends Plugin {
 			console.log('click', evt);
 		});
 
+		// this.registerView(
+			// "interactive-story-view",
+			// (leaf: WorkspaceLeaf) => new ExampleView(leaf)
+		// );
+		// this.registerEditorExtension();
+
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		this.registerView(
+			VIEW_TYPE_EXAMPLE,
+			(leaf) => new ExampleView(leaf)
+		);
+
+		this.addRibbonIcon("dice", "Activate view", () => {
+			this.activateView();
+		});
+	}
+
+	async activateView() {
+		const { workspace } = this.app;
+		let leaf: any;
+		const leaves = workspace.getLeavesOfType(VIEW_TYPE_EXAMPLE);
+		if (leaves.length > 0) {
+			// A leaf with our view already exists, use that
+			leaf = leaves[0];
+		} else {
+			leaf = workspace.getRightLeaf(false);
+			await leaf.setViewState({ type: VIEW_TYPE_EXAMPLE, active: true });
+		}
+		// "Reveal" the leaf in case it is in a collapsed sidebar
+		if(workspace) {
+			workspace.revealLeaf(leaf);
+		}
 	}
 
 	onunload() {
@@ -171,5 +202,32 @@ class SampleSettingTab extends PluginSettingTab {
 					this.plugin.settings.mySetting = value;
 					await this.plugin.saveSettings();
 				}));
+	}
+}
+
+export const VIEW_TYPE_EXAMPLE = "example-view";
+
+
+export class ExampleView extends ItemView {
+	constructor(leaf: WorkspaceLeaf) {
+		super(leaf);
+	}
+
+	getViewType() {
+		return VIEW_TYPE_EXAMPLE;
+	}
+
+	getDisplayText() {
+		return "Example view";
+	}
+
+	async onOpen() {
+		const container = this.containerEl.children[1];
+		container.empty();
+		container.createEl("h4", { text: "Example view" });
+	}
+
+	async onClose() {
+		// Nothing to clean up.
 	}
 }
