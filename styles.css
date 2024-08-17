@@ -1,8 +1,40 @@
-/*
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.intstory_chat_window {
+    display: flex;
+    flex-direction: column;
+}
 
-If your plugin does not need CSS, delete this file.
+.intstory_message_border {
+    border-radius: 10px;
+    margin: 4px;
+    background: rgb(77 76 76);
+    color: white;
+}
 
-*/
+.intstory_message_other {
+    margin-right: 30px;
+}
+
+.intstory_message_you {
+    margin-left: 30px;
+    background: rgb(35 86 123);
+}
+
+.intstory_message_content {
+    padding: 6px;
+}
+
+.intstory_choices {
+    margin: 4px;
+    margin-left: 30px;
+    color: orange;
+}
+
+.intstory_choice {
+    margin: 1px;
+}
+
+.intstory_next {
+    margin: 1px;
+    width: 100%;
+}
