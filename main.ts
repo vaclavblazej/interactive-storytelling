@@ -34,6 +34,9 @@ enum CommandType{
     Id,
     Next,
     Choice,
+    Option,
+    Repeat,
+    End,
 }
 
 class Command{
@@ -42,16 +45,50 @@ class Command{
 }
 
 class Entry {
-    id: number
-    next_id: number | null
-    spaces: number
+    nexts: Entry[]
+    indent: number
     speaker: string | null
-    choice_ids: number[] | null
     text: string
     commands: Command[]
-}
+    children: Entry[]
+    parent: Entry | null
+    successor: Entry | null
 
-var first_free_id: number = 0;
+    check_get(type: CommandType): number | null {
+        for(const command of this.commands){
+            if(command.type == type){
+               return command.id;
+            }
+        }
+        return null;
+    }
+    check(type: CommandType): boolean {
+        for(const command of this.commands){
+            if(command.type == type){
+               return true;
+            }
+        }
+        return false;
+    }
+    id(): number | null{
+        return this.check_get(CommandType.Id)
+    }
+    next(): number | null{
+        return this.check_get(CommandType.Next);
+    }
+    choice(): boolean{
+        return this.check(CommandType.Choice);
+    }
+    option(): boolean{
+        return this.check(CommandType.Option);
+    }
+    repeat(): boolean{
+        return this.check(CommandType.Repeat);
+    }
+    end(): boolean{
+        return this.check(CommandType.End);
+    }
+}
 
 function parse_command(command_str: string): Command{
     const cmd_split = command_str.split(' ');
@@ -60,24 +97,42 @@ function parse_command(command_str: string): Command{
         case "id": {
             res.type = CommandType.Id;
             res.id = parseInt(cmd_split[1]);
+            break;
         }
         case "next": {
             res.type = CommandType.Next;
             res.id = parseInt(cmd_split[1]);
+            break;
         }
         case "choice": {
             res.type = CommandType.Choice;
             res.id = null;
+            break;
+        }
+        case "option": {
+            res.type = CommandType.Option;
+            res.id = null;
+            break;
+        }
+        case "repeat": {
+            res.type = CommandType.Repeat;
+            res.id = null;
+            break;
+        }
+        case "end": {
+            res.type = CommandType.End;
+            res.id = null;
+            break;
         }
     }
     return res;
 }
 
 // expecting lines of the following format
-// (spaces) * speaker: Text that may contain `commands` within backticks.
+// (indent) * speaker: Text that may contain `commands` within backticks.
 // (otherwise returns null)
 function parse_line(line: string): Entry | null {
-    var spaces = 0;
+    var indent = 0;
     var i = 0;
     for(; i < line.length; ++i){
         const c = line.charAt(i);
@@ -88,7 +143,7 @@ function parse_line(line: string): Entry | null {
         if(c != ' '){
             return null;
         }
-        spaces += 1;
+        indent += 1;
     }
     if(i == line.length){
         return null;
@@ -124,45 +179,22 @@ function parse_line(line: string): Entry | null {
     }
     const commands = command_strings.map(parse_command);
     const res = new Entry();
-    for(const i in commands){
-        const command = commands[i];
-        switch(command.type){
-            case CommandType.Id: {
-            }
-            case CommandType.Next: {
-            }
-            case CommandType.Choice: {
-            }
-        }
-    }
-    if(res.id == null){
-        res.id = first_free_id;
-        first_free_id += 1;
-    }
-    res.choices = [];
-    res.next_id = null;
-    res.spaces = spaces;
+    res.nexts = [];
+    res.indent = indent;
     res.speaker = speaker;
     res.text = text.trim();
     res.commands = commands;
+    res.children = [];
     return res;
 }
 
 function get_graph(lines: string[]): Entry[] {
     var res = [];
-    var last = null;
     for(var i = 0; i < lines.length; ++i){
         const line = lines[i];
         const line_struct = parse_line(line);
         if(line_struct){
-            line_struct.id = first_free_id;
-            if(last != null){
-                if(last.next_id == null){
-                    last.next_id = line_struct.id;
-                }
-            }
             res.push(line_struct);
-            last = line_struct
         }
     }
     return res;
@@ -342,15 +374,90 @@ class SampleSettingTab extends PluginSettingTab {
     }
 }
 
+function get_after(entry: Entry): Entry | null{
+    if(entry.parent && entry.parent.choice()){
+        return get_after(entry.parent);
+    }
+    if(entry.successor){
+        return entry.successor;
+    }
+    if(entry.parent){
+        return get_after(entry.parent);
+    }
+    return null;
+}
+
+function compute_nexts(entries: Entry[]){
+    const indent_stack: Entry[] = [];
+    for(const entry of entries){
+        while(true){
+            const last = indent_stack.last();
+            if(last == undefined || last.indent <= entry.indent){
+                break;
+            }
+            indent_stack.pop();
+        }
+        const predecesor = indent_stack.last();
+        if(predecesor != undefined && predecesor.indent == entry.indent){
+            predecesor.successor = entry;
+            indent_stack.pop();
+        }
+        const parent = indent_stack.last();
+        if(parent != undefined){
+            entry.parent = parent;
+            parent.children.push(entry);
+        }
+        indent_stack.push(entry);
+    }
+    for(const entry of entries){
+        const tobe_nexts: Entry[] = [];
+        if(entry.children.length != 0){
+            if(entry.choice()){
+                for(const child of entry.children){
+                    tobe_nexts.push(child);
+                }
+            }else{
+                tobe_nexts.push(entry.children[0]);
+            }
+        }else{
+            const next = get_after(entry);
+            if(next){
+                tobe_nexts.push(next);
+            }
+        }
+        if(entry.repeat()){ // todo repeat seems to be broken
+            var choice_ancestor = entry.parent;
+            while(choice_ancestor != null && !choice_ancestor.choice()){
+                choice_ancestor = choice_ancestor.parent;
+            }
+            if(choice_ancestor != null){
+                tobe_nexts.push(choice_ancestor);
+            }
+        }
+        const nexts = [];
+        while(tobe_nexts.length != 0){
+            const tobe_next = tobe_nexts.pop();
+            if(tobe_next == undefined){
+                break;
+            }
+            if(tobe_next.option() && tobe_next.successor != null){
+                tobe_nexts.push(tobe_next.successor);
+            }
+            nexts.push(tobe_next);
+        }
+        entry.nexts = nexts;
+    }
+}
+
 export const VIEW_TYPE_EXAMPLE = "example-view";
 
-var chat_history: any[] = [];
-var choices: Entry[] = [];
+var chat_history: Entry[] = [];
 var everything: any = {
     file_start: {},
-    ids_to_structs: {},
+    address_to_entry: {},
 };
-var current_stack: number[] = [];
+var file_stack: string[] = [];
+var current_line: Entry | null = null;
 
 export class ExampleView extends ItemView {
     constructor(leaf: WorkspaceLeaf) {
@@ -361,13 +468,10 @@ export class ExampleView extends ItemView {
         await this.app.vault.adapter.read(filename).then((file: string) => {
             const lines = file.split('\n');
             const entries: Entry[] = get_graph(lines);
-            for(const i in entries){
-                const entry = entries[i];
-                everything.ids_to_structs[entry.id] = entry;
-            }
-            const first_id = entries[0].id;
-            everything.file_start[filename] = first_id;
-            current_stack.push(first_id);
+            compute_nexts(entries);
+            current_line = entries[0];
+            everything.file_start[filename] = current_line;
+            file_stack.push(filename);
         });
     }
 
@@ -388,33 +492,19 @@ export class ExampleView extends ItemView {
     async start_active_file(){
         const active_file = this.app.workspace.getActiveFile();
         if(active_file) {
-            current_stack = [];
+            file_stack = [];
             await this.push_file(active_file.name).then(() => {
                 chat_history = []
-                const last = current_stack.last();
-                if(last){
-                    chat_history.push(everything.ids_to_structs[last]);
+                if(current_line){
+                    chat_history.push(current_line);
                 }
             });
         }
     }
 
-    advance_current_position(){
-        const current_id: number | undefined = current_stack.pop();
-        console.log("current_id:", current_id);
-        if(current_id == undefined){
-            console.log("undefined current_id", current_id);
-            return;
-        }
-        const current: Entry = everything.ids_to_structs[current_id];
-        if(current.next_id == null){
-            this.advance_current_position();
-            return;
-        }
-        const next_el = everything.ids_to_structs[current.next_id];
-        console.log("next:", next_el);
-        current_stack.push(next_el.id);
-        chat_history.push(next_el);
+    push_next(next: Entry){
+        chat_history.push(next);
+        current_line = next;
     }
 
     render(){
@@ -435,29 +525,46 @@ export class ExampleView extends ItemView {
             var m = messages_el
             .createEl("div", { cls: "intstory_message_border " + cls })
             .createEl("div", { cls: "intstory_message_content" });
-            m.createEl("b", { text: message.speaker });
+            if(message.speaker){
+                m.createEl("b", { text: message.speaker });
+            }
             m.createEl("span", { text: " – " + message.text, cls: "intstory_" + message.speaker });
         }
+        if(current_line == null){
+            return;
+        }
         var chocies_el = messages_el.createEl("div", { cls: "intstory_choices" })
-        if(choices.length != 0){
-            for(const choice of choices){
-                const btn = chocies_el.createEl("button", { text: "" + choice.id + " – " + choice.text, cls: "intstory_choice" })
+        const nexts: Entry[] = [];
+        for(const next of current_line.nexts){
+            nexts.push(next);
+        }
+        // console.log(current_line);
+        // if(current_line.end()){
+            // // todo end
+        // }
+        // if(current_line.nexts.length == 0){
+            // // todo idk
+        // }
+        console.log(current_line);
+        if(current_line.nexts.length == 1){
+            const btn = chocies_el.createEl("button", { text: "next", cls: "intstory_next" })
+            const next = current_line.nexts[0];
+            btn.onClickEvent(() => {
+                this.push_next(next);
+                this.render();
+            });
+        } else if(current_line.nexts.length >= 2){
+            for(const i in nexts){
+                const next = nexts[i];
+                const btn = chocies_el.createEl("button", { text: (i+1) + " – " + next.text, cls: "intstory_choice" })
                 btn.onClickEvent(() => {
-                    chat_history.push({
-                        speaker: "You",
-                        text: choice.text,
-                    });
-                    choices = [];
+                    this.push_next(next);
+                    if(next.nexts.length == 1){
+                        this.push_next(next.nexts[0]);
+                    }
                     this.render();
                 });
             }
-        }else{
-            const btn = chocies_el.createEl("button", { text: "next", cls: "intstory_next" })
-            btn.onClickEvent(() => {
-                console.log("next");
-                this.advance_current_position();
-                this.render();
-            });
         }
     }
 
