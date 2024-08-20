@@ -41,11 +41,11 @@ enum CommandType{
 
 class Command{
     type: CommandType
-    id: number | null
+    id: string | null
 }
 
 class Entry {
-    nexts: Entry[]
+    nexts: Set<Entry>
     indent: number
     speaker: string | null
     text: string
@@ -54,7 +54,10 @@ class Entry {
     parent: Entry | null
     successor: Entry | null
 
-    check_get(type: CommandType): number | null {
+    is_empty(): boolean{
+        return this.text.trim() == "";
+    }
+    check_get(type: CommandType): string | null {
         for(const command of this.commands){
             if(command.type == type){
                return command.id;
@@ -70,10 +73,10 @@ class Entry {
         }
         return false;
     }
-    id(): number | null{
+    id(): string | null{
         return this.check_get(CommandType.Id)
     }
-    next(): number | null{
+    next(): string | null{
         return this.check_get(CommandType.Next);
     }
     choice(): boolean{
@@ -96,12 +99,12 @@ function parse_command(command_str: string): Command{
     switch(cmd_split[0]){
         case "id": {
             res.type = CommandType.Id;
-            res.id = parseInt(cmd_split[1]);
+            res.id = cmd_split[1];
             break;
         }
         case "next": {
             res.type = CommandType.Next;
-            res.id = parseInt(cmd_split[1]);
+            res.id = cmd_split[1];
             break;
         }
         case "choice": {
@@ -179,7 +182,7 @@ function parse_line(line: string): Entry | null {
     }
     const commands = command_strings.map(parse_command);
     const res = new Entry();
-    res.nexts = [];
+    res.nexts = new Set<Entry>();
     res.indent = indent;
     res.speaker = speaker;
     res.text = text.trim();
@@ -204,6 +207,7 @@ export default class MyPlugin extends Plugin {
     settings: InteractiveStorytellingSettings;
 
     async onload() {
+        run_tests();
         await this.loadSettings();
 
         // // This creates an icon in the left ribbon.
@@ -387,8 +391,14 @@ function get_after(entry: Entry): Entry | null{
     return null;
 }
 
-function compute_nexts(entries: Entry[]){
+function compute_entry_data(entries: Entry[]){
     const indent_stack: Entry[] = [];
+    for(const entry of entries){
+        const id = entry.id();
+        if(id != null){
+            id_to_entry.set(id, entry);
+        }
+    }
     for(const entry of entries){
         while(true){
             const last = indent_stack.last();
@@ -410,40 +420,79 @@ function compute_nexts(entries: Entry[]){
         indent_stack.push(entry);
     }
     for(const entry of entries){
-        const tobe_nexts: Entry[] = [];
-        if(entry.children.length != 0){
-            if(entry.choice()){
-                for(const child of entry.children){
-                    tobe_nexts.push(child);
-                }
+        const tobe_nexts = new Set<Entry>();
+        const next_command_id = entry.next();
+        if(next_command_id){
+            const entry_by_id = id_to_entry.get(next_command_id);
+            if(entry_by_id){
+                tobe_nexts.add(entry_by_id);
             }else{
-                tobe_nexts.push(entry.children[0]);
+                console.log("did not find in", next_command_id)
             }
-        }else{
-            const next = get_after(entry);
-            if(next){
-                tobe_nexts.push(next);
-            }
-        }
-        if(entry.repeat()){ // todo repeat seems to be broken
+        }else if(entry.repeat()){
             var choice_ancestor = entry.parent;
             while(choice_ancestor != null && !choice_ancestor.choice()){
                 choice_ancestor = choice_ancestor.parent;
             }
             if(choice_ancestor != null){
-                tobe_nexts.push(choice_ancestor);
+                tobe_nexts.add(choice_ancestor);
+            }
+        }else if(entry.children.length != 0){
+            if(entry.choice()){
+                for(const child of entry.children){
+                    tobe_nexts.add(child);
+                }
+            }else{
+                tobe_nexts.add(entry.children[0]);
+            }
+        }else{
+            const next = get_after(entry);
+            if(next){
+                tobe_nexts.add(next);
             }
         }
-        const nexts = [];
+        const nexts = new Set<Entry>();
+        for(const tobe_next of tobe_nexts){
+            if(tobe_next == undefined){
+                continue;
+            }
+            nexts.add(tobe_next);
+        }
+        entry.nexts = nexts;
+    }
+    for(const entry of entries){
+        const tobe_nexts: Entry[] = [];
+        const visited = new Set<Entry>();
+        for(const next of entry.nexts){
+            tobe_nexts.push(next);
+            visited.add(next);
+        }
+        entry.nexts = new Set<Entry>();
+        const nexts = new Set<Entry>();
         while(tobe_nexts.length != 0){
             const tobe_next = tobe_nexts.pop();
             if(tobe_next == undefined){
-                break;
+                continue;
             }
-            if(tobe_next.option() && tobe_next.successor != null){
-                tobe_nexts.push(tobe_next.successor);
+            if(tobe_next.option()){
+                const after = get_after(tobe_next);
+                if(after){
+                    if(!visited.has(after)){
+                        visited.add(after);
+                        tobe_nexts.push(after);
+                    }
+                }
             }
-            nexts.push(tobe_next);
+            if(tobe_next.is_empty()){
+                for(const n of tobe_next.nexts){
+                    if(!visited.has(n)){
+                        visited.add(n);
+                        tobe_nexts.push(n);
+                    }
+                }
+            }else{
+                nexts.add(tobe_next);
+            }
         }
         entry.nexts = nexts;
     }
@@ -452,10 +501,8 @@ function compute_nexts(entries: Entry[]){
 export const VIEW_TYPE_EXAMPLE = "example-view";
 
 var chat_history: Entry[] = [];
-var everything: any = {
-    file_start: {},
-    address_to_entry: {},
-};
+var file_start: Map<string, Entry> = new Map();
+var id_to_entry: Map<string, Entry> = new Map();
 var file_stack: string[] = [];
 var current_line: Entry | null = null;
 
@@ -468,9 +515,9 @@ export class ExampleView extends ItemView {
         await this.app.vault.adapter.read(filename).then((file: string) => {
             const lines = file.split('\n');
             const entries: Entry[] = get_graph(lines);
-            compute_nexts(entries);
+            compute_entry_data(entries);
             current_line = entries[0];
-            everything.file_start[filename] = current_line;
+            file_start.set(filename, current_line);
             file_stack.push(filename);
         });
     }
@@ -493,7 +540,7 @@ export class ExampleView extends ItemView {
         const active_file = this.app.workspace.getActiveFile();
         if(active_file) {
             file_stack = [];
-            await this.push_file(active_file.name).then(() => {
+            await this.push_file(active_file.path).then(() => {
                 chat_history = []
                 if(current_line){
                     chat_history.push(current_line);
@@ -527,14 +574,17 @@ export class ExampleView extends ItemView {
             .createEl("div", { cls: "intstory_message_content" });
             if(message.speaker){
                 m.createEl("b", { text: message.speaker });
+                m.createEl("span", { text: " – " });
             }
-            m.createEl("span", { text: " – " + message.text, cls: "intstory_" + message.speaker });
+            m.createEl("span", { text: message.text, cls: "intstory_" + message.speaker });
         }
         if(current_line == null){
             return;
         }
         var chocies_el = messages_el.createEl("div", { cls: "intstory_choices" })
         const nexts: Entry[] = [];
+        console.log(current_line);
+        console.log(current_line.nexts);
         for(const next of current_line.nexts){
             nexts.push(next);
         }
@@ -546,22 +596,27 @@ export class ExampleView extends ItemView {
             // // todo idk
         // }
         console.log(current_line);
-        if(current_line.nexts.length == 1){
+        if(current_line.nexts.size == 1){
+            console.log(current_line.nexts.size);
             const btn = chocies_el.createEl("button", { text: "next", cls: "intstory_next" })
-            const next = current_line.nexts[0];
+            const next: Entry = current_line.nexts.entries().next().value;
+            console.log(current_line);
+            console.log(">>", next);
             btn.onClickEvent(() => {
                 this.push_next(next);
                 this.render();
             });
-        } else if(current_line.nexts.length >= 2){
+        } else if(current_line.nexts.size >= 2){
             for(const i in nexts){
-                const next = nexts[i];
+                const next: Entry = nexts[i];
                 const btn = chocies_el.createEl("button", { text: (i+1) + " – " + next.text, cls: "intstory_choice" })
                 btn.onClickEvent(() => {
+                    console.log("next:", next);
                     this.push_next(next);
-                    if(next.nexts.length == 1){
-                        this.push_next(next.nexts[0]);
-                    }
+                    // if(next.nexts.size == 1){
+                        // const value: Entry = next.nexts.entries().next().value;
+                        // this.push_next(value);
+                    // }
                     this.render();
                 });
             }
@@ -570,5 +625,28 @@ export class ExampleView extends ItemView {
 
     async onClose() {
         // Nothing to clean up.
+    }
+}
+
+function assert(condition: any, msg?: string):  asserts condition {
+    if (!condition) {
+        throw new Error(msg);
+    }
+}
+
+function run_tests(){
+    {
+        const line = parse_line("* A");
+        assert(line != null);
+        assert(line.speaker == null);
+        assert(line.text == "A");
+        assert(line.indent == 0);
+    }
+    {
+        const line = parse_line("  *  \t Daniel:   B line \n \t");
+        assert(line != null);
+        assert(line.speaker == "Daniel");
+        assert(line.text == "B line");
+        assert(line.indent == 2);
     }
 }
