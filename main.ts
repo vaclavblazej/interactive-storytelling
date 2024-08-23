@@ -1,4 +1,5 @@
 import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal, WorkspaceLeaf, setIcon } from 'obsidian';
+import { nextTick } from 'process';
 
 interface InteractiveStorytellingSettings {
     mySetting: string;
@@ -37,15 +38,48 @@ enum CommandType{
     Option,
     Repeat,
     End,
+    Call,
+    Skip,
+    Set,
+    If,
 }
 
 class Command{
     type: CommandType
-    id: string | null
+    par: string | null
+}
+
+class Next{
+    entry: Entry
+    conditions: Command[]
+    effects: Command[]
+}
+
+function combine_next(previous: Next, entry: Entry): Next{
+    const next = new Next();
+    next.entry = entry;
+    next.conditions = Object.assign([], previous.conditions);
+    next.effects = Object.assign([], previous.effects);
+    for(const command of entry.commands){
+        if(command.type == CommandType.Set){
+            next.effects.push(command);
+        }else if(command.type == CommandType.If){
+            next.conditions.push(command);
+        }
+    }
+    return next;
+}
+
+function to_next(entry: Entry): Next{
+    const next = new Next();
+    next.entry = entry;
+    next.conditions = [];
+    next.effects = [];
+    return combine_next(next, entry);
 }
 
 class Entry {
-    nexts: Set<Entry>
+    nexts: Next[]
     indent: number
     speaker: string | null
     text: string
@@ -60,7 +94,7 @@ class Entry {
     check_get(type: CommandType): string | null {
         for(const command of this.commands){
             if(command.type == type){
-               return command.id;
+               return command.par;
             }
         }
         return null;
@@ -79,6 +113,15 @@ class Entry {
     next(): string | null{
         return this.check_get(CommandType.Next);
     }
+    call(): string | null{
+        return this.check_get(CommandType.Call);
+    }
+    set(): string | null{
+        return this.check_get(CommandType.Set);
+    }
+    if(): string | null{
+        return this.check_get(CommandType.If);
+    }
     choice(): boolean{
         return this.check(CommandType.Choice);
     }
@@ -91,6 +134,9 @@ class Entry {
     end(): boolean{
         return this.check(CommandType.End);
     }
+    skip(): boolean{
+        return this.check(CommandType.Skip);
+    }
 }
 
 function parse_command(command_str: string): Command{
@@ -99,32 +145,52 @@ function parse_command(command_str: string): Command{
     switch(cmd_split[0]){
         case "id": {
             res.type = CommandType.Id;
-            res.id = cmd_split[1];
+            res.par = cmd_split[1];
             break;
         }
         case "next": {
             res.type = CommandType.Next;
-            res.id = cmd_split[1];
+            res.par = cmd_split[1];
+            break;
+        }
+        case "set": {
+            res.type = CommandType.Set;
+            res.par = cmd_split.slice(1).join(" ");
+            break;
+        }
+        case "if": {
+            res.type = CommandType.If;
+            res.par = cmd_split.slice(1).join(" ");
+            break;
+        }
+        case "call": {
+            res.type = CommandType.Call;
+            res.par = null;
             break;
         }
         case "choice": {
             res.type = CommandType.Choice;
-            res.id = null;
+            res.par = null;
             break;
         }
         case "option": {
             res.type = CommandType.Option;
-            res.id = null;
+            res.par = null;
             break;
         }
         case "repeat": {
             res.type = CommandType.Repeat;
-            res.id = null;
+            res.par = null;
             break;
         }
         case "end": {
             res.type = CommandType.End;
-            res.id = null;
+            res.par = null;
+            break;
+        }
+        case "skip": {
+            res.type = CommandType.Skip;
+            res.par = null;
             break;
         }
     }
@@ -155,7 +221,7 @@ function parse_line(line: string): Entry | null {
     var speaker = null;
     var text = "";
     var command: string = "";
-    var command_strings = [];
+    var commands = [];
     for(; i < line.length; ++i){
         const c = line.charAt(i);
         if(speaker == null && c == ':'){
@@ -167,7 +233,25 @@ function parse_line(line: string): Entry | null {
         }else if(code){
             if(c == '`'){
                 code = false;
-                command_strings.push(command);
+                const pcommand = parse_command(command);
+                if(pcommand.type == CommandType.Call){
+                    i += 3;
+                    var file = "";
+                    while(true){
+                        ++i;
+                        if(i == line.length){
+                            break;
+                        }
+                        const c = line.charAt(i);
+                        if(c == ']'){
+                            i += 2;
+                            break;
+                        }
+                        file += c;
+                    }
+                    pcommand.par = file;
+                }
+                commands.push(pcommand);
             }else{
                 command += c;
             }
@@ -180,9 +264,8 @@ function parse_line(line: string): Entry | null {
             }
         }
     }
-    const commands = command_strings.map(parse_command);
     const res = new Entry();
-    res.nexts = new Set<Entry>();
+    res.nexts = [];
     res.indent = indent;
     res.speaker = speaker;
     res.text = text.trim();
@@ -210,17 +293,6 @@ export default class MyPlugin extends Plugin {
         run_tests();
         await this.loadSettings();
 
-        // // This creates an icon in the left ribbon.
-        // const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-        // // Called when the user clicks the icon.
-        // new Notice('This is a notice!');
-        // });
-        // // Perform additional things with the ribbon
-        // ribbonIconEl.addClass('my-plugin-ribbon-class');
-
-        // const statusBarItemEl = this.addStatusBarItem();
-        // statusBarItemEl.setText('Status Bar Text');
-
         this.addCommand({
             id: 'add-id',
             name: 'Add ID',
@@ -241,49 +313,8 @@ export default class MyPlugin extends Plugin {
             }
         });
 
-        // This adds an editor command that can perform some operation on the current editor instance
-        // this.addCommand({
-            // id: 'sample-editor-command',
-            // name: 'Sample editor command',
-            // editorCallback: (editor: Editor, view: MarkdownView) => {
-                // editor.replaceSelection('Sample Editor Command');
-            // }
-        // });
-
-        // This adds a complex command that can check whether the current state of the app allows execution of the command
-        // this.addCommand({
-        // id: 'open-sample-modal-complex',
-        // name: 'Open sample modal (complex)',
-        // checkCallback: (checking: boolean) => {
-        // // Conditions to check
-        // const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-        // if (markdownView) {
-        // // If checking is true, we're simply "checking" if the command can be run.
-        // // If checking is false, then we want to actually perform the operation.
-        // if (!checking) {
-        // new IdSuggestModal(this.app).open();
-        // }
-
-        // // This command will only show up in Command Palette when the check function returns true
-        // return true;
-        // }
-        // }
-        // });
-
         // This adds a settings tab so the user can configure various aspects of the plugin
         this.addSettingTab(new SampleSettingTab(this.app, this));
-
-        // If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-        // Using this function will automatically remove the event listener when this plugin is disabled.
-        // this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-            // console.log('click', evt);
-        // });
-
-        // this.registerView(
-        // "interactive-story-view",
-        // (leaf: WorkspaceLeaf) => new ExampleView(leaf)
-        // );
-        // this.registerEditorExtension();
 
         // When registering intervals, this function will automatically clear the interval when the plugin is disabled.
         // this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
@@ -391,6 +422,15 @@ function get_after(entry: Entry): Entry | null{
     return null;
 }
 
+function check_and_push(next: Next, set: Set<Entry>, array: Next[]){
+    if(set.has(next.entry)){
+        console.log("entry has several ways of being added"); // todo error reporting
+    }else{
+        set.add(next.entry);
+        array.push(next);
+    }
+}
+
 function compute_entry_data(entries: Entry[]){
     const indent_stack: Entry[] = [];
     for(const entry of entries){
@@ -420,14 +460,15 @@ function compute_entry_data(entries: Entry[]){
         indent_stack.push(entry);
     }
     for(const entry of entries){
-        const tobe_nexts = new Set<Entry>();
+        const tobe_next_set = new Set<Entry>();
+        const tobe_next_array: Next[] = [];
         const next_command_id = entry.next();
         if(next_command_id){
             const entry_by_id = id_to_entry.get(next_command_id);
             if(entry_by_id){
-                tobe_nexts.add(entry_by_id);
+                check_and_push(to_next(entry_by_id), tobe_next_set, tobe_next_array);
             }else{
-                console.log("did not find in", next_command_id)
+                console.log("did not find id in this file", next_command_id)
             }
         }else if(entry.repeat()){
             var choice_ancestor = entry.parent;
@@ -435,63 +476,61 @@ function compute_entry_data(entries: Entry[]){
                 choice_ancestor = choice_ancestor.parent;
             }
             if(choice_ancestor != null){
-                tobe_nexts.add(choice_ancestor);
+                check_and_push(to_next(choice_ancestor), tobe_next_set, tobe_next_array);
             }
         }else if(entry.children.length != 0){
             if(entry.choice()){
                 for(const child of entry.children){
-                    tobe_nexts.add(child);
+                    check_and_push(to_next(child), tobe_next_set, tobe_next_array);
                 }
             }else{
-                tobe_nexts.add(entry.children[0]);
+                check_and_push(to_next(entry.children[0]), tobe_next_set, tobe_next_array);
             }
         }else{
             const next = get_after(entry);
             if(next){
-                tobe_nexts.add(next);
+                check_and_push(to_next(next), tobe_next_set, tobe_next_array);
             }
         }
-        const nexts = new Set<Entry>();
-        for(const tobe_next of tobe_nexts){
+        const nexts: Next[] = [];
+        for(const tobe_next of tobe_next_array){
             if(tobe_next == undefined){
                 continue;
             }
-            nexts.add(tobe_next);
+            nexts.push(tobe_next);
         }
         entry.nexts = nexts;
     }
+    // ids are computed so we can use them now
     for(const entry of entries){
-        const tobe_nexts: Entry[] = [];
-        const visited = new Set<Entry>();
+        console.log("building nexts for", entry);
+        const tobe_next_set = new Set<Entry>();
+        const tobe_next_array: Next[] = [];
         for(const next of entry.nexts){
-            tobe_nexts.push(next);
-            visited.add(next);
+            tobe_next_set.add(next.entry);
+            tobe_next_array.push(next);
         }
-        entry.nexts = new Set<Entry>();
-        const nexts = new Set<Entry>();
-        while(tobe_nexts.length != 0){
-            const tobe_next = tobe_nexts.pop();
+        const nexts: Next[] = [];
+        while(tobe_next_array.length != 0){
+            const tobe_next: Next | undefined = tobe_next_array.pop();
             if(tobe_next == undefined){
                 continue;
             }
-            if(tobe_next.option()){
-                const after = get_after(tobe_next);
+            if(tobe_next.entry.option()){
+                console.log("found option", tobe_next.entry);
+                const after = get_after(tobe_next.entry);
                 if(after){
-                    if(!visited.has(after)){
-                        visited.add(after);
-                        tobe_nexts.push(after);
-                    }
+                    check_and_push(to_next(after), tobe_next_set, tobe_next_array);
                 }
             }
-            if(tobe_next.is_empty()){
-                for(const n of tobe_next.nexts){
-                    if(!visited.has(n)){
-                        visited.add(n);
-                        tobe_nexts.push(n);
-                    }
+            if(tobe_next.entry.is_empty() || tobe_next.entry.skip()){
+                console.log("found empty", tobe_next);
+                for(const n of tobe_next.entry.nexts){
+                    console.log("combining empty", tobe_next, n.entry);
+                    check_and_push(combine_next(tobe_next, n.entry), tobe_next_set, tobe_next_array);
                 }
             }else{
-                nexts.add(tobe_next);
+                nexts.push(tobe_next);
             }
         }
         entry.nexts = nexts;
@@ -505,6 +544,19 @@ var file_start: Map<string, Entry> = new Map();
 var id_to_entry: Map<string, Entry> = new Map();
 var file_stack: string[] = [];
 var current_line: Entry | null = null;
+var state = new Object();
+
+function apply_set_command(par: string, state: any){
+    console.log("set", par);
+    const F = new Function("state", "{"+par+"}");
+    F(state);
+}
+
+function apply_if_command(par: string, state: any): boolean{
+    console.log("if", par);
+    const F = new Function("state", "{return "+par+"}");
+    return F(state);
+}
 
 export class ExampleView extends ItemView {
     constructor(leaf: WorkspaceLeaf) {
@@ -549,9 +601,19 @@ export class ExampleView extends ItemView {
         }
     }
 
-    push_next(next: Entry){
-        chat_history.push(next);
-        current_line = next;
+    push_next(next: Next){
+        chat_history.push(next.entry);
+        current_line = next.entry;
+        for(const effect of next.effects){
+            if(effect.par){
+                apply_set_command(effect.par, state);
+            }
+        }
+        const id = next.entry.id();
+        if(id){
+            console.log('state["line_'+id+'"]=true');
+            apply_set_command('state["line_'+id+'"]=true', state);
+        }
     }
 
     render(){
@@ -582,12 +644,12 @@ export class ExampleView extends ItemView {
             return;
         }
         var chocies_el = messages_el.createEl("div", { cls: "intstory_choices" })
-        const nexts: Entry[] = [];
-        console.log(current_line);
-        console.log(current_line.nexts);
-        for(const next of current_line.nexts){
-            nexts.push(next);
-        }
+        // const nexts: Entry[] = [];
+        console.log("current line:", current_line);
+        // console.log(current_line.nexts);
+        // for(const next of current_line.nexts){
+            // nexts.push(next);
+        // }
         // console.log(current_line);
         // if(current_line.end()){
             // // todo end
@@ -595,30 +657,41 @@ export class ExampleView extends ItemView {
         // if(current_line.nexts.length == 0){
             // // todo idk
         // }
-        console.log(current_line);
-        if(current_line.nexts.size == 1){
-            console.log(current_line.nexts.size);
+        const filtered_nexts = [];
+        for(const next of current_line.nexts){
+            var okay = true;
+            for(const condition of next.conditions){
+                if(condition.par){
+                    if(!apply_if_command(condition.par, state)){
+                        okay = false;
+                        break;
+                    }
+                }
+            }
+            if(okay){
+                filtered_nexts.push(next);
+            }
+        }
+        if(filtered_nexts.length == 1){
             const btn = chocies_el.createEl("button", { text: "next", cls: "intstory_next" })
-            const next: Entry = current_line.nexts.entries().next().value;
-            console.log(current_line);
-            console.log(">>", next);
+            const next: Next = filtered_nexts.values().next().value;
             btn.onClickEvent(() => {
                 this.push_next(next);
                 this.render();
             });
-        } else if(current_line.nexts.size >= 2){
-            for(const i in nexts){
-                const next: Entry = nexts[i];
-                const btn = chocies_el.createEl("button", { text: (i+1) + " – " + next.text, cls: "intstory_choice" })
+        } else if(filtered_nexts.length >= 2){
+            var i = 0;
+            for(const next of filtered_nexts){
+                const btn = chocies_el.createEl("button", { text: (i+1) + " – " + next.entry.text, cls: "intstory_choice" })
                 btn.onClickEvent(() => {
-                    console.log("next:", next);
                     this.push_next(next);
                     // if(next.nexts.size == 1){
-                        // const value: Entry = next.nexts.entries().next().value;
-                        // this.push_next(value);
+                        // const value: Entry = next.nexts.values().next().value;
+                        // this.push_next(value.entry);
                     // }
                     this.render();
                 });
+                i += 1;
             }
         }
     }
