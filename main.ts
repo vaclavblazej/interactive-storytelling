@@ -1,5 +1,4 @@
-import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal, WorkspaceLeaf, setIcon } from 'obsidian';
-import { nextTick } from 'process';
+import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 
 interface InteractiveStorytellingSettings {
     mySetting: string;
@@ -47,6 +46,7 @@ enum CommandType{
 class Command{
     type: CommandType
     par: string | null
+    // else: undefined | Next
 }
 
 class Next{
@@ -611,8 +611,8 @@ export class ExampleView extends ItemView {
         }
         const id = next.entry.id();
         if(id){
-            console.log('state["line_'+id+'"]=true');
-            apply_set_command('state["line_'+id+'"]=true', state);
+            console.log('state["line.'+id+'"]=true');
+            apply_set_command('state["line.'+id+'"]=true', state);
         }
     }
 
@@ -621,6 +621,7 @@ export class ExampleView extends ItemView {
         container.empty();
         const start_btn = container.createEl("button", { text: "Run this file", cls: "intstory_buttongs" });
         start_btn.onClickEvent(() => {
+            state = new Object();
             this.start_active_file().then(() => {
                 this.render()
             });
@@ -654,9 +655,9 @@ export class ExampleView extends ItemView {
         // if(current_line.end()){
             // // todo end
         // }
-        // if(current_line.nexts.length == 0){
-            // // todo idk
-        // }
+        if(current_line.nexts.length == 0){
+            chocies_el.createEl("div", { text: "end of conversation" });
+        }
         const filtered_nexts = [];
         for(const next of current_line.nexts){
             var okay = true;
