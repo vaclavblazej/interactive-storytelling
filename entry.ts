@@ -20,36 +20,36 @@ export class Command{
 }
 
 export class Next{
-    conditions: Command[]
-    yes_entry: Entry
-    no_entry: Entry | null
+    line: Line
     effects: Command[]
 
-    constructor(entry: Entry){
-        this.yes_entry = entry;
-        this.conditions = [];
+    constructor(line: Line){
+        this.line = line;
         this.effects = [];
-        for(const command of entry.commands){
+        for(const command of line.commands){
             if(command.type == CommandType.Set){
                 this.effects.push(command);
-            }else if(command.type == CommandType.If){
-                this.conditions.push(command);
             }
         }
         // return this; // check
     }
 
+    concat(line: Line): Next{
+        const res = new Next(line);
+        res.effects = Object.assign([], this.effects).concat(res.effects);
+        return res;
+    }
 }
 
-export class Entry {
-    nexts: Entry[]
-    indent: number
+export class Line {
+    nexts: Line[] // entries that are considered to be after this one
+    indent: number // depth of this line
     speaker: string | null
     text: string | null
     commands: Command[]
-    children: Entry[]
-    parent: Entry | null // null if line is in the root scope
-    successor: Entry | null // null if line the last one
+    children: Line[]
+    parent: Line | null // null if line is in the root scope
+    successor: Line | null // null if line the last one
 
     constructor(){
         this.nexts = []

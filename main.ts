@@ -1,5 +1,5 @@
 import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
-import { Entry, Next, Command, CommandType } from './entry'
+import { Line, Next, Command, CommandType } from './entry'
 import { parse_id_list } from './parse'
 import { randomString } from './utils'
 import { run_tests } from './test'

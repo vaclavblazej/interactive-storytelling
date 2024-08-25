@@ -22,4 +22,5 @@ export function run_tests(){
         assert(line.text == "B line");
         assert(line.indent == 2);
     }
+    console.log("tests passed");
 }

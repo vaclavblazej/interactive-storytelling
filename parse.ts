@@ -1,9 +1,9 @@
 // Module that creates raw structures from given strings. Note that the
 // structures need to be processed further to have all the information.
 
-import { Entry, Command, CommandType } from './entry'
+import { Line, Command, CommandType } from './entry'
 
-export function parse_file(file_content: string): Entry[] {
+export function parse_file(file_content: string): Line[] {
     const lines = file_content.split('\n');
     var res = [];
     for(var i = 0; i < lines.length; ++i){
@@ -35,7 +35,7 @@ export function parse_id_list(file_content: string) {
 // expecting lines of the following format
 // (indent) * speaker: Text that may contain `commands` within backticks.
 // (otherwise returns null)
-export function parse_line(line: string): Entry | null {
+export function parse_line(line: string): Line | null {
     var indent = 0;
     var i = 0;
     for(; i < line.length; ++i){
@@ -100,7 +100,7 @@ export function parse_line(line: string): Entry | null {
             }
         }
     }
-    const res = new Entry();
+    const res = new Line();
     res.nexts = [];
     res.indent = indent;
     res.speaker = speaker;
