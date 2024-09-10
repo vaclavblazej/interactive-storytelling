@@ -12,6 +12,7 @@ export enum CommandType{
     Skip,
     Set,
     If,
+    Else,
 }
 
 export class Command{
@@ -95,6 +96,9 @@ export class Line {
     }
     if(): string | null{
         return this.check_get(CommandType.If);
+    }
+    else(): boolean{
+        return this.check(CommandType.Else);
     }
     choice(): boolean{
         return this.check(CommandType.Choice);

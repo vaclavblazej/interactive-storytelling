@@ -107,46 +107,53 @@ export function compute_entry_data(lines: Line[]){
     compute_nexts(lines);
 }
 
-function compute_choice_rec(line: Line, state: State, tobe_next_set: Set<Line>): Next[]{
-    const nexts: Next[] = [];
+function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_next_set: Set<Line>): Next[]{
+    console.log('compute choices of', line);
+    const if_command = line.if();
+    if(if_command){
+        if(!state.apply_if_command(if_command)){
+            return [];
+        }else if(line.successor?.else()){
+            return compute_choice_rec(line.successor, new Next(line), state, tobe_next_set);
+        }else{
+            return [];
+        }
+    }
+    var nexts: Next[] = [];
+    var next_line = null;
+    if(parent){
+        next_line = parent.concat(line);
+    }else{
+        next_line = new Next(line);
+    }
+    if(line.is_empty() || line.skip()){
+        for(const n of line.nexts){
+            nexts.push(...compute_choice_rec(n, next_line, state, tobe_next_set));
+        }
+    }else{
+        if(tobe_next_set.has(line)){
+            console.log("line has several ways of being added");
+        }else{
+            tobe_next_set.add(line);
+            nexts.push(next_line);
+        }
+    }
     if(line.option()){
         const after = get_after(line);
         if(after != null){
-            nexts.concat(compute_choice_rec(after, state, tobe_next_set));
+            nexts.push(...compute_choice_rec(after, null, state, tobe_next_set));
         }
     }
-    // todo finish this function
-    if(line.is_empty() || line.skip()){
-        for(const n of line.nexts){
-            // console.log("combining empty", line, n.line);
-            check_and_push(new Next(line).concat(n.line), tobe_next_set, tobe_next_array);
-        }
-    }else{
-        nexts.push(tobe_next);
-    }
-    const filtered_nexts = [];
-    for(const next of this.current_line.nexts){
-        var okay = true;
-        for(const condition of next.conditions){
-            if(condition.par){
-                if(!this.apply_if_command(condition.par)){
-                    okay = false;
-                    break;
-                }
-            }
-        }
-        if(okay){
-            filtered_nexts.push(next);
-        }
-    }
-    return filtered_nexts;
+    console.log('res1', nexts);
+    return nexts;
 }
 
 export function compute_choices(line: Line, state: State): Next[]{
     const tobe_next_set = new Set<Line>();
-    const result: Next[] = [];
+    var result: Next[] = [];
     for(const entry of line.nexts){
-        result.concat(compute_choice_rec(entry, state, tobe_next_set));
+        result.push(...compute_choice_rec(entry, null, state, tobe_next_set));
     }
+    console.log('result:', result);
     return result;
 }

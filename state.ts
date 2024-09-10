@@ -31,6 +31,7 @@ export class State{
                 compute_entry_data(entries);
                 const dummy_entry = new Line();
                 dummy_entry.nexts.push(entries[0]);
+                this.current_line = dummy_entry;
                 this.file_start.set(filename, dummy_entry);
                 this.file_stack.push(filename);
             }
@@ -41,9 +42,6 @@ export class State{
         this.file_stack = [];
         await this.push_file(file_path, adapter).then(() => {
             this.chat_history = []
-            if(this.current_line){
-                this.chat_history.push(this.current_line);
-            }
         });
     }
 
@@ -51,7 +49,6 @@ export class State{
         if(this.current_line == null){
             return [];
         }
-        console.log("current line:", this.current_line);
         return compute_choices(this.current_line, this)
     }
 

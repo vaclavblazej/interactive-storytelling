@@ -140,6 +140,11 @@ function parse_command(command_str: string): Command[]{
                 i = cmd_split.length;
                 break;
             }
+            case "else": {
+                cmd.type = CommandType.Else;
+                cmd.par = null;
+                break;
+            }
             case "call": {
                 cmd.type = CommandType.Call;
                 cmd.par = null;
