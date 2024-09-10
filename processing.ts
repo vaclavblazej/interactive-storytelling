@@ -108,7 +108,6 @@ export function compute_entry_data(lines: Line[]){
 }
 
 function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_next_set: Set<Line>): Next[]{
-    console.log('compute choices of', line);
     const if_command = line.if();
     if(if_command){
         if(!state.apply_if_command(if_command)){
@@ -144,7 +143,6 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
             nexts.push(...compute_choice_rec(after, null, state, tobe_next_set));
         }
     }
-    console.log('res1', nexts);
     return nexts;
 }
 
@@ -154,6 +152,5 @@ export function compute_choices(line: Line, state: State): Next[]{
     for(const entry of line.nexts){
         result.push(...compute_choice_rec(entry, null, state, tobe_next_set));
     }
-    console.log('result:', result);
     return result;
 }
