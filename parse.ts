@@ -40,7 +40,7 @@ export function parse_line(line: string): Line | null {
     var i = 0;
     for(; i < line.length; ++i){
         const c = line.charAt(i);
-        if(c == '*' || c == '-'){
+        if((c == '*' || c == '-') && (i+1 < line.length) && line.charAt(i+1) == ' '){
             ++i;
             break;
         }

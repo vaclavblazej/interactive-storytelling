@@ -3,6 +3,7 @@
 
 import { State } from './state'
 import { Line, Next } from './entry'
+import { Result, ok } from 'utils';
 
 function get_after(line: Line): Line | null{
     if(line.parent && line.parent.choice()){
@@ -107,15 +108,16 @@ export function compute_entry_data(lines: Line[]){
     compute_nexts(lines);
 }
 
-function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_next_set: Set<Line>): Next[]{
+function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_next_set: Set<Line>): Result<Next[]>{
     const if_command = line.if();
     if(if_command){
-        if(!state.apply_if_command(if_command)){
-            return [];
+        const res = state.apply_if_command(if_command);
+        if(res._tag == "Err"){
+            return res;
         }else if(line.successor?.else()){
             return compute_choice_rec(line.successor, new Next(line), state, tobe_next_set);
         }else{
-            return [];
+            return ok([]);
         }
     }
     var nexts: Next[] = [];
@@ -127,7 +129,12 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
     }
     if(line.is_empty() || line.skip()){
         for(const n of line.nexts){
-            nexts.push(...compute_choice_rec(n, next_line, state, tobe_next_set));
+            const res = compute_choice_rec(n, next_line, state, tobe_next_set);
+            if(res._tag == "Ok"){
+                nexts.push(...res.value);
+            }else{
+                return res;
+            }
         }
     }else{
         if(tobe_next_set.has(line)){
@@ -140,17 +147,27 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
     if(line.option()){
         const after = get_after(line);
         if(after != null){
-            nexts.push(...compute_choice_rec(after, null, state, tobe_next_set));
+            const res = compute_choice_rec(after, null, state, tobe_next_set);
+            if(res._tag == "Ok"){
+                nexts.push(...res.value);
+            }else{
+                return res;
+            }
         }
     }
-    return nexts;
+    return ok(nexts);
 }
 
-export function compute_choices(line: Line, state: State): Next[]{
+export function compute_choices(line: Line, state: State): Result<Next[]>{
     const tobe_next_set = new Set<Line>();
     var result: Next[] = [];
     for(const entry of line.nexts){
-        result.push(...compute_choice_rec(entry, null, state, tobe_next_set));
+        const res = compute_choice_rec(entry, null, state, tobe_next_set);
+        if(res._tag == "Ok"){
+            result.push(...res.value);
+        }else{
+            return res;
+        }
     }
-    return result;
+    return ok(result);
 }

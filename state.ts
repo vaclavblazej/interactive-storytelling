@@ -1,6 +1,7 @@
 import { Line, Next } from './entry'
 import { parse_file } from './parse'
 import { compute_choices, compute_entry_data } from './processing'
+import { Result, ok, err } from './utils'
 
 export class State{
     data: Object
@@ -10,15 +11,13 @@ export class State{
     file_start: Map<string, Line>
 
     apply_set_command(par: string){
-        console.log("set", par);
         const F = new Function("state", "{"+par+"}");
         F(this.data);
     }
 
-    apply_if_command(par: string): boolean{
-        console.log("if", par);
+    apply_if_command(par: string): Result<boolean> {
         const F = new Function("state", "{return "+par+"}");
-        return F(this.data);
+        return ok(F(this.data)); // todo error reporting
     }
 
     async push_file(filename: string, adapter: any) {
