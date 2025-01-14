@@ -44,10 +44,15 @@ export function parse_line(line: string): Line | null {
             ++i;
             break;
         }
-        if(c != ' '){
-            return null;
+        if(c == ' '){
+            indent += 1;
+            continue;
         }
-        indent += 1;
+        if(c == '\t'){
+            indent += 4;
+            continue;
+        }
+        return null;
     }
     if(i == line.length){
         return null;

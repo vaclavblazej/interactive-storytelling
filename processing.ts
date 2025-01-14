@@ -112,7 +112,7 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
     const if_command = line.if();
     if(if_command){
         const res = state.apply_if_command(if_command);
-        if(res._tag == "Err"){
+        if(!res.ok){
             return res;
         }else if(line.successor?.else()){
             return compute_choice_rec(line.successor, new Next(line), state, tobe_next_set);
@@ -130,7 +130,7 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
     if(line.is_empty() || line.skip()){
         for(const n of line.nexts){
             const res = compute_choice_rec(n, next_line, state, tobe_next_set);
-            if(res._tag == "Ok"){
+            if(res.ok){
                 nexts.push(...res.value);
             }else{
                 return res;
@@ -148,7 +148,7 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
         const after = get_after(line);
         if(after != null){
             const res = compute_choice_rec(after, null, state, tobe_next_set);
-            if(res._tag == "Ok"){
+            if(res.ok){
                 nexts.push(...res.value);
             }else{
                 return res;
@@ -163,7 +163,7 @@ export function compute_choices(line: Line, state: State): Result<Next[]>{
     var result: Next[] = [];
     for(const entry of line.nexts){
         const res = compute_choice_rec(entry, null, state, tobe_next_set);
-        if(res._tag == "Ok"){
+        if(res.ok){
             result.push(...res.value);
         }else{
             return res;

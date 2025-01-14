@@ -6,22 +6,22 @@ export function randomString(len: number) {
 }
 
 export type Ok<T> = {
-    _tag: "Ok",
-    value: T
+    ok: true,
+    value: T,
 }
 
 export type Err = {
-    _tag: "Err",
-    message: string
+    ok: false,
+    message: string,
 }
 
 export const ok = <T>(value: T): Ok<T> => ({
-    _tag: "Ok",
+    ok: true,
     value,
 });
 
 export const err = (message: string): Err => ({
-    _tag: "Err",
+    ok: false,
     message,
 });
 

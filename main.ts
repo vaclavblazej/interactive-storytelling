@@ -38,6 +38,7 @@ export default class InteractiveStorytellingPlugin extends Plugin {
                 new IdSuggestModal(this.app, editor, idList).open();
             }
         });
+
         this.addSettingTab(new InteractiveStorytellingSettingTab(this.app, this));
         this.registerView(
             VIEW_TYPE_EXAMPLE,
@@ -160,7 +161,7 @@ export class ExampleView extends ItemView {
     render(){
         const container = this.containerEl.children[1];
         container.empty();
-        const start_btn = container.createEl("button", { text: "Run this file", cls: "intstory_buttongs" });
+        const start_btn = container.createEl("button", { text: "Run this file", cls: "intstory_buttons" });
         start_btn.onClickEvent(() => {
             state.reset();
             this.start_active_file().then(() => {
@@ -186,27 +187,30 @@ export class ExampleView extends ItemView {
             }
             m.createEl("span", { text: message.text, cls: "intstory_" + message.speaker });
         }
-        const choices = state.list_choices();
-        const chocies_el = messages_el.createEl("div", { cls: "intstory_choices" })
-        console.log("current line:", state.current_line);
-        if(choices.length == 0){
-            chocies_el.createEl("div", { text: "end of conversation" });
-        } else if(choices.length == 1){
-            const btn = chocies_el.createEl("button", { text: "next", cls: "intstory_next" })
-            const next: Next = choices.values().next().value;
-            btn.onClickEvent(() => {
-                state.push_next(next);
-                this.render();
-            });
-        } else if(choices.length >= 2){
-            var i = 0;
-            for(const next of choices){
-                const btn = chocies_el.createEl("button", { text: (i+1) + " – " + next.line.text, cls: "intstory_choice" })
+        const res_choices = state.list_choices();
+        if(res_choices.ok){
+            const choices = res_choices.value;
+            const chocies_el = messages_el.createEl("div", { cls: "intstory_choices" })
+            // console.log("current line:", state.current_line);
+            if(choices.length == 0){
+                chocies_el.createEl("div", { text: "end of conversation" });
+            } else if(choices.length == 1){
+                const btn = chocies_el.createEl("button", { text: "next", cls: "intstory_next" })
+                const next: Next = choices.values().next().value;
                 btn.onClickEvent(() => {
                     state.push_next(next);
                     this.render();
                 });
-                i += 1;
+            } else if(choices.length >= 2){
+                var i = 0;
+                for(const next of choices){
+                    const btn = chocies_el.createEl("button", { text: (i+1) + " – " + next.line.text, cls: "intstory_choice" })
+                    btn.onClickEvent(() => {
+                        state.push_next(next);
+                        this.render();
+                    });
+                    i += 1;
+                }
             }
         }
     }

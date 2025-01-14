@@ -44,9 +44,9 @@ export class State{
         });
     }
 
-    list_choices(): Next[]{
+    list_choices(): Result<Next[]>{
         if(this.current_line == null){
-            return [];
+            return err("current line is null");
         }
         return compute_choices(this.current_line, this)
     }
