@@ -9,6 +9,7 @@ export enum CommandType{
     Repeat,
     End,
     Call,
+    Empty,
     Skip,
     Set,
     If,
@@ -66,9 +67,6 @@ export class Line {
         this.successor = null
     }
 
-    is_empty(): boolean{
-        return this.text == null || this.text.trim() == "";
-    }
     check_get(type: CommandType): string | null {
         for(const command of this.commands){
             if(command.type == type){
@@ -117,5 +115,8 @@ export class Line {
     }
     skip(): boolean{
         return this.check(CommandType.Skip);
+    }
+    empty(): boolean{
+        return this.text == null || this.text.trim() == "" || this.check(CommandType.Empty);
     }
 }

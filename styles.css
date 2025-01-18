@@ -28,10 +28,25 @@
     margin: 4px;
     margin-left: 30px;
     color: orange;
+    display: flex;
+    flex-direction: column;
+}
+
+.intstory_btn {
+    display: block;
+    margin: 1px;
+    padding: 8px;
+    text-align: left;
+    height: auto;
 }
 
 .intstory_choice {
-    margin: 1px;
+    word-break: keep-all;
+    white-space: normal;
+}
+
+.intstory_checkbox {
+    margin: 8px;
 }
 
 .intstory_next {

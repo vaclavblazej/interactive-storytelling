@@ -180,6 +180,11 @@ function parse_command(command_str: string): Command[]{
                 cmd.par = null;
                 break;
             }
+            case "empty": {
+                cmd.type = CommandType.Empty;
+                cmd.par = null;
+                break;
+            }
         }
         res.push(cmd);
     }

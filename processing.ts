@@ -1,7 +1,7 @@
 // Given lines these methods go through them and compute all auxiliary
 // information that is later used for dialog.
 
-import { State } from './state'
+import { DebugMsg, State } from './state'
 import { Line, Next } from './entry'
 import { Result, ok } from 'utils';
 
@@ -108,16 +108,35 @@ export function compute_entry_data(lines: Line[]){
     compute_nexts(lines);
 }
 
-function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_next_set: Set<Line>): Result<Next[]>{
+function compute_choice_rec(line: Line, parent: Next | null, parent_if_call: boolean, state: State, tobe_next_set: Set<Line>): Result<Next[]>{
+    state.push_debug(new DebugMsg("rec \"" + line.text + "\""));
+    const else_command = line.else();
+    if(else_command){
+        if(parent_if_call){
+            state.push_debug(new DebugMsg("if else \"" + line.text + "\""));
+        }else{
+            if(line.successor){
+                return compute_choice_rec(line.successor, new Next(line), true, state, tobe_next_set)
+            }else{
+                return ok([]);
+            }
+        }
+    }
     const if_command = line.if();
     if(if_command){
         const res = state.apply_if_command(if_command);
         if(!res.ok){
             return res;
-        }else if(line.successor?.else()){
-            return compute_choice_rec(line.successor, new Next(line), state, tobe_next_set);
+        }
+        if(res.value){
+            state.push_debug(new DebugMsg("if true \"" + line.text + "\""));
         }else{
-            return ok([]);
+            if(line.successor?.else()){
+                state.push_debug(new DebugMsg("if false else \"" + line.text + "\""));
+                return compute_choice_rec(line.successor, new Next(line), true, state, tobe_next_set);
+            } else {
+                return ok([]);
+            }
         }
     }
     var nexts: Next[] = [];
@@ -127,9 +146,9 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
     }else{
         next_line = new Next(line);
     }
-    if(line.is_empty() || line.skip()){
+    if(line.empty()){
         for(const n of line.nexts){
-            const res = compute_choice_rec(n, next_line, state, tobe_next_set);
+            const res = compute_choice_rec(n, next_line, false, state, tobe_next_set);
             if(res.ok){
                 nexts.push(...res.value);
             }else{
@@ -147,7 +166,7 @@ function compute_choice_rec(line: Line, parent: Next | null, state: State, tobe_
     if(line.option()){
         const after = get_after(line);
         if(after != null){
-            const res = compute_choice_rec(after, null, state, tobe_next_set);
+            const res = compute_choice_rec(after, null, false, state, tobe_next_set);
             if(res.ok){
                 nexts.push(...res.value);
             }else{
@@ -162,7 +181,7 @@ export function compute_choices(line: Line, state: State): Result<Next[]>{
     const tobe_next_set = new Set<Line>();
     var result: Next[] = [];
     for(const entry of line.nexts){
-        const res = compute_choice_rec(entry, null, state, tobe_next_set);
+        const res = compute_choice_rec(entry, null, false, state, tobe_next_set);
         if(res.ok){
             result.push(...res.value);
         }else{

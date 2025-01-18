@@ -3,7 +3,7 @@
 	"name": "Interactive Storytelling",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Create your interactive story as a web of notes.",
+	"description": "Create your interactive story as a network of notes.",
 	"author": "Václav Blažej",
 	"authorUrl": "https://blazeva1.pages.fit/",
 	"isDesktopOnly": false

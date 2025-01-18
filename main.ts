@@ -1,9 +1,9 @@
 import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
-import { Next } from './entry'
+import { Line, Next } from './entry'
 import { parse_id_list } from './parse'
 import { randomString } from './utils'
 import { run_tests } from './test'
-import { State } from './state'
+import { DebugMsg, State } from './state'
 
 export const VIEW_TYPE_EXAMPLE = "example-view";
 
@@ -168,34 +168,50 @@ export class ExampleView extends ItemView {
                 this.render()
             });
         });
+        const debug_checkbox = container
+        .createEl("span", { cls: "intstory_checkbox" })
+        .createEl("input", { type: "checkbox" });
+        debug_checkbox.checked = state.debug;
+        debug_checkbox.onClickEvent(() => {
+            state.debug = debug_checkbox.checked;
+            this.render();
+        });
         const messages_el = container.createEl("div", { cls: "intstory_chat_window" });
-        for(const message of state.chat_history) {
-            var cls = "intstory_message_" + message.speaker;
-            if(message.speaker != "You"){
-                cls += " intstory_message_other";
-            }
-            if(message.text == null){
-                console.log("error: empty text in a displayed element");
-                continue;
-            }
-            const m = messages_el
+        for(const element of state.chat_history) {
+            if(element instanceof Line){
+                const message = element;
+                var cls = "intstory_message_" + message.speaker;
+                if(message.speaker != "You"){
+                    cls += " intstory_message_other";
+                }
+                if(message.text == null){
+                    console.log("error: empty text in a displayed element");
+                    continue;
+                }
+                const m = messages_el
                 .createEl("div", { cls: "intstory_message_border " + cls })
                 .createEl("div", { cls: "intstory_message_content" });
-            if(message.speaker){
-                m.createEl("b", { text: message.speaker });
-                m.createEl("span", { text: " – " });
+                if(message.speaker){
+                    m.createEl("b", { text: message.speaker });
+                    m.createEl("span", { text: " – " });
+                }
+                m.createEl("span", { text: message.text, cls: "intstory_" + message.speaker });
             }
-            m.createEl("span", { text: message.text, cls: "intstory_" + message.speaker });
+            if(element instanceof DebugMsg){
+                const debug = element;
+                if(state.debug){
+                    messages_el.createEl("div", { text: debug.message });
+                }
+            }
         }
-        const res_choices = state.list_choices();
-        if(res_choices.ok){
-            const choices = res_choices.value;
+        if(state.choices_result.ok){
+            const choices = state.choices_result.value;
             const chocies_el = messages_el.createEl("div", { cls: "intstory_choices" })
-            // console.log("current line:", state.current_line);
             if(choices.length == 0){
                 chocies_el.createEl("div", { text: "end of conversation" });
             } else if(choices.length == 1){
-                const btn = chocies_el.createEl("button", { text: "next", cls: "intstory_next" })
+                const btn = chocies_el.createEl("button", { cls: "intstory_btn" })
+                btn.createEl("span", { text: "next", cls: "intstory_next" })
                 const next: Next = choices.values().next().value;
                 btn.onClickEvent(() => {
                     state.push_next(next);
@@ -204,7 +220,8 @@ export class ExampleView extends ItemView {
             } else if(choices.length >= 2){
                 var i = 0;
                 for(const next of choices){
-                    const btn = chocies_el.createEl("button", { text: (i+1) + " – " + next.line.text, cls: "intstory_choice" })
+                    const btn = chocies_el.createEl("button", { cls: "intstory_btn" } );
+                    btn.createEl("span", { text: (i+1) + " – " + next.line.text, cls: "intstory_choice" });
                     btn.onClickEvent(() => {
                         state.push_next(next);
                         this.render();
