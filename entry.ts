@@ -28,7 +28,10 @@ export class Next{
         this.line = line;
         this.effects = [];
         for(const command of line.commands){
-            if(command.type == CommandType.Set){
+            if(command.type == CommandType.Set
+            || command.type == CommandType.End
+            || command.type == CommandType.Call
+            ){
                 this.effects.push(command);
             }
         }

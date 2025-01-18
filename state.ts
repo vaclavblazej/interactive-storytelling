@@ -1,4 +1,4 @@
-import { Line, Next } from './entry'
+import { Command, CommandType, Line, Next } from './entry'
 import { parse_file } from './parse'
 import { compute_choices, compute_entry_data } from './processing'
 import { Result, ok, err } from './utils'
@@ -9,15 +9,25 @@ export class State{
     current_line: Line | null
     chat_history: Line[]
     file_start: Map<string, Line>
+    end: boolean
 
-    apply_set_command(par: string){
-        const F = new Function("state", "{"+par+"}");
-        F(this.data);
+    apply_set_command(command: Command){
+        if(command.type == CommandType.Set) {
+            if(command.par){
+                const F = new Function("state", "{"+command.par+"}");
+                F(this.data);
+            }
+        }
     }
 
-    apply_if_command(par: string): Result<boolean> {
-        const F = new Function("state", "{return "+par+"}");
-        return ok(F(this.data)); // todo error reporting
+    apply_if_command(command: Command): Result<boolean> {
+        if(command.type == CommandType.If){
+            if(command.par){
+                const F = new Function("state", "{return "+command.par+"}");
+                return ok(F(this.data)); // todo error reporting
+            }
+        }
+        return err("idk");
     }
 
     async push_file(filename: string, adapter: any) {
@@ -48,6 +58,9 @@ export class State{
         if(this.current_line == null){
             return err("current line is null");
         }
+        if(this.current_line.end()){
+            return ok([]);
+        }
         return compute_choices(this.current_line, this)
     }
 
@@ -55,14 +68,15 @@ export class State{
         this.chat_history.push(next.line);
         this.current_line = next.line;
         for(const effect of next.effects){
-            if(effect.par){
-                this.apply_set_command(effect.par);
-            }
+            this.apply_set_command(effect);
         }
         const id = next.line.id();
         if(id){
             console.log('state["line.'+id+'"]=true');
-            this.apply_set_command('state["line.'+id+'"]=true');
+            var cmd = new Command();
+            cmd.type = CommandType.Set;
+            cmd.par = 'state["line.'+id+'"]=true';
+            this.apply_set_command(cmd);
         }
     }
 
