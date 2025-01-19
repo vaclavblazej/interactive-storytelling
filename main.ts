@@ -1,11 +1,11 @@
-import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
+import { App, Editor, FuzzySuggestModal, ItemView, MarkdownView, Plugin, PluginSettingTab, setIcon, Setting, WorkspaceLeaf } from 'obsidian';
 import { Line, Next } from './entry'
 import { parse_id_list } from './parse'
 import { randomString } from './utils'
 import { run_tests } from './test'
 import { DebugMsg, State } from './state'
 
-export const VIEW_TYPE_EXAMPLE = "example-view";
+export const VIEW_TYPE_EXAMPLE = "intstory-view";
 
 interface InteractiveStorytellingSettings {
     mySetting: string;
@@ -161,14 +161,18 @@ export class ExampleView extends ItemView {
     render(){
         const container = this.containerEl.children[1];
         container.empty();
-        const start_btn = container.createEl("button", { text: "Run this file", cls: "intstory_buttons" });
-        start_btn.onClickEvent(() => {
+        const nav = container
+        .createEl("div", { cls: "nav-header intstory_header" })
+        .createEl("div", { cls: "nav-buttons-container" });
+        const reload_btn = nav.createEl("div", { cls: "clickable-icon nav-action-button" } );
+        setIcon(reload_btn, "list-restart");
+        reload_btn.onClickEvent(() => {
             state.reset();
             this.start_active_file().then(() => {
                 this.render()
             });
         });
-        const debug_checkbox = container
+        const debug_checkbox = nav
         .createEl("span", { cls: "intstory_checkbox" })
         .createEl("input", { type: "checkbox" });
         debug_checkbox.checked = state.debug;
@@ -228,6 +232,12 @@ export class ExampleView extends ItemView {
                     });
                     i += 1;
                 }
+            }
+        }
+        if(state.debug){
+            container.createEl("br");
+            for(const [key, value] of Object.entries(state.data)){
+                container.createEl("div", { text: key + ": " + value });
             }
         }
     }

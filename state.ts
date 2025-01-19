@@ -17,7 +17,7 @@ export class State{
     current_line: Line | null
     chat_history: (Line | DebugMsg)[]
     file_start: Map<string, Line>
-    debug: boolean = false
+    debug: boolean = true
     choices_result: Result<Next[]>
     end: boolean
 

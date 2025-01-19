@@ -45,6 +45,11 @@
     white-space: normal;
 }
 
+.intstory_header {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 .intstory_checkbox {
     margin: 8px;
 }
